@@ -1,0 +1,122 @@
+# ==========================================
+# Git
+# ==========================================
+.git/
+.gitignore
+.gitattributes
+
+# ==========================================
+# Build output (will be rebuilt in container)
+# ==========================================
+build/
+target/
+out/
+bin/
+
+# ==========================================
+# Gradle (will download in container)
+# ==========================================
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat
+
+# ==========================================
+# IDE files
+# ==========================================
+.idea/
+*.iws
+*.iml
+*.ipr
+.classpath
+.project
+.settings/
+.factorypath
+.vscode/
+*.code-workspace
+/nbproject/
+/.nb-gradle/
+
+# ==========================================
+# Documentation
+# ==========================================
+*.md
+!README.md
+docs/
+LICENSE
+
+# ==========================================
+# Environment & Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# Test files
+# ==========================================
+src/test/
+**/test/
+*Test.java
+*Tests.java
+*IT.java
+/coverage/
+*.exec
+test-results/
+test-output/
+
+# ==========================================
+# Log files
+# ==========================================
+*.log
+logs/
+*.log.*
+
+# ==========================================
+# Temporary files
+# ==========================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
+tmp/
+temp/
+data/
+
+# ==========================================
+# OS files
+# ==========================================
+.DS_Store
+.DS_Store?
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# Docker
+# ==========================================
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ==========================================
+# CI/CD
+# ==========================================
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+azure-pipelines.yml
+
+# ==========================================
+# Misc
+# ==========================================
+*.bak
+*.backup
+*.orig
+*.rar
+*.zip
+*.tar.gz
+*.7z

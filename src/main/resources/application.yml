@@ -1,0 +1,86 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: file-depot
+  # datasource: bootTestRun 시 Testcontainers가 자동 설정
+  cloud:
+    consul:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        '[format_sql]': true
+        '[default_batch_fetch_size]': 20
+    open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: ${MAX_FILE_SIZE:100MB}
+      max-request-size: ${MAX_REQUEST_SIZE:100MB}
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+
+springdoc:
+  swagger-ui:
+    path: /docs
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    root: INFO
+    com:
+      saltlux:
+        filedepot: DEBUG
+    org:
+      hibernate:
+        orm:
+          jdbc:
+            bind: TRACE
+  pattern:
+    console: '%d{yyyy-MM-dd HH:mm:ss} - %msg%n'
+
+file-depot:
+  parsekit:
+    scenario: ${PARSEKIT_SCENARIO:disabled}
+    converter:
+      url: ${PARSEKIT_CONVERTER_URL:}
+    docling:
+      url: ${PARSEKIT_DOCLING_URL:}
+    vlm:
+      url: ${PARSEKIT_VLM_URL:}
+      model: ${PARSEKIT_VLM_MODEL:}
+
+  embedkit:
+    provider: ${EMBEDKIT_PROVIDER:none}
+    vllm:
+      url: ${EMBEDKIT_VLLM_URL:}
+      model: ${EMBEDKIT_VLLM_MODEL:}
+      batch-size: ${EMBEDKIT_VLLM_BATCH_SIZE:32}
+    luxia:
+      base-url: ${EMBEDKIT_LUXIA_URL:}
+      batch-size: ${EMBEDKIT_LUXIA_BATCH_SIZE:32}
+
+  processing:
+    worker-threads: ${PROCESSING_WORKER_THREADS:4}
+    queue-capacity: ${PROCESSING_QUEUE_CAPACITY:1000}
+    max-retry-count: ${PROCESSING_MAX_RETRY_COUNT:3}
+    chunking:
+      size: ${PROCESSING_CHUNK_SIZE:512}
+      overlap: ${PROCESSING_CHUNK_OVERLAP:100}
+    batch:
+      enabled: ${PROCESSING_BATCH_ENABLED:true}
+      batch-size: ${PROCESSING_BATCH_SIZE:100}
+      extract-cron: ${PROCESSING_BATCH_EXTRACT_CRON:0 */5 * * * *}
+      chunk-cron: ${PROCESSING_BATCH_CHUNK_CRON:0 */5 * * * *}
+      embed-cron: ${PROCESSING_BATCH_EMBED_CRON:0 */5 * * * *}
+      orphan-cleanup-cron: ${PROCESSING_BATCH_ORPHAN_CLEANUP_CRON:0 0 3 * * *}

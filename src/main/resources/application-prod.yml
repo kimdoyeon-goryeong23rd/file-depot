@@ -1,0 +1,80 @@
+spring:
+  cloud:
+    consul:
+      enabled: ${CONSUL_ENABLED:false}
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: ${CONSUL_ENABLED:false}
+        service-name: file-depot
+        instance-id: ${DISCOVERY_HOST:localhost}:${SERVER_PORT:8080}
+        hostname: ${DISCOVERY_HOST:localhost}
+        port: ${SERVER_PORT:8080}
+        health-check-path: /actuator/health
+        management-port: ${MANAGEMENT_PORT:8081}
+        health-check-interval: 10s
+        acl-token: ${CONSUL_ACL_TOKEN:}
+  datasource:
+    url: ${MARIADB_URL}
+    username: ${MARIADB_USER}
+    password: ${MARIADB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        '[format_sql]': false
+
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+        exclude: heapdump,threaddump,env,configprops
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: WARN
+    com:
+      saltlux:
+        filedepot: INFO
+    org:
+      hibernate:
+        orm:
+          jdbc:
+            bind: WARN
+  file:
+    name: /app/logs/application.log
+  logback:
+    rollingpolicy:
+      max-file-size: 100MB
+      max-history: 30
+  pattern:
+    file: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
+    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
+
+file-depot:
+  minio:
+    url: ${MINIO_URL}
+    access-key: ${MINIO_ACCESS_KEY}
+    secret-key: ${MINIO_SECRET_KEY}
+    bucket: ${MINIO_BUCKET:file-depot}
+  processing:
+    batch:
+      enabled: ${PROCESSING_BATCH_ENABLED:false}
