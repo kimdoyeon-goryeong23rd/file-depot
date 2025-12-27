@@ -225,6 +225,90 @@ Content-Type: application/json
 SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
 ```
 
+### Docker Compose
+
+```yaml
+services:
+  file-depot:
+    image: kimdoyeongr23rd/file-depot:0.1.0
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: prod
+
+      # Database
+      MARIADB_URL: jdbc:mariadb://mariadb:3306/file_depot
+      MARIADB_USER: root
+      MARIADB_PASSWORD: secret
+      DB_POOL_SIZE: 10
+      DDL_AUTO: update
+
+      # MinIO
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: file-depot
+
+      # Document Processing (optional)
+      PARSEKIT_SCENARIO: disabled  # disabled, scenario1, scenario2
+      # PARSEKIT_CONVERTER_URL: http://converter:3000
+      # PARSEKIT_DOCLING_URL: http://docling:5001
+      # PARSEKIT_VLM_URL: http://vlm:8000
+      # PARSEKIT_VLM_MODEL: Qwen/Qwen2.5-VL-7B-Instruct
+
+      # Embedding (optional)
+      EMBEDKIT_PROVIDER: none  # none, vllm, luxia
+      # EMBEDKIT_VLLM_URL: http://vllm:8000
+      # EMBEDKIT_VLLM_MODEL: BAAI/bge-m3
+
+      # Processing
+      PROCESSING_BATCH_ENABLED: "true"
+      PROCESSING_MAX_RETRY_COUNT: 3
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  mariadb:
+    image: mariadb:11.2
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: file_depot
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mariadb_data:
+  minio_data:
+```
+
+> MinIO 버킷(`file-depot`)은 애플리케이션 시작 시 자동으로 생성됩니다.
+
 ## 환경 변수
 
 `.env.example` 파일을 참고하여 `.env` 파일을 생성하세요.
@@ -253,3 +337,10 @@ PARSEKIT_SCENARIO=disabled  # disabled, scenario1, scenario2
 # Embedding
 EMBEDKIT_PROVIDER=none  # none, vllm, luxia
 ```
+
+## 연관 프로젝트
+
+| 프로젝트          | 설명                             | 저장소                                                                                                  |
+| ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| file-depot-api    | File Depot API 정의              | [agent-hanju/file-depot-api](https://github.com/agent-hanju/file-depot-api)                             |
+| file-depot-client | File Depot 클라이언트 라이브러리 | [kimdoyeon-goryeong23rd/file-depot-client](https://github.com/kimdoyeon-goryeong23rd/file-depot-client) |

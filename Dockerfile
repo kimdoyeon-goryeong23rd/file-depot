@@ -1,10 +1,10 @@
 FROM eclipse-temurin:21-jdk-jammy AS builder
 WORKDIR /workspace
-COPY gradle gradle
 COPY gradlew .
+COPY gradle gradle
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew
 COPY settings.gradle .
 COPY build.gradle .
-RUN chmod +x gradlew
 RUN ./gradlew dependencies --no-daemon || true
 COPY src src
 RUN ./gradlew bootJar -x test --no-daemon

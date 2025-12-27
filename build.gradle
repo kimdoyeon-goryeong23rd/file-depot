@@ -6,6 +6,7 @@ plugins {
 
 group = 'com.saltlux'
 version = '0.1.0'
+description = 'File storage and document processing service with text extraction, chunking, and embedding generation'
 
 java {
   toolchain {
