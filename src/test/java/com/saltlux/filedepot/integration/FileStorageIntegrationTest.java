@@ -7,7 +7,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +35,7 @@ import com.saltlux.filedepot.service.FileService;
 import com.saltlux.filedepot.support.TestStorageHelper;
 
 import jakarta.persistence.EntityManager;
+import me.hanju.filedepot.api.dto.BatchDownloadRequest;
 import me.hanju.filedepot.api.dto.ConfirmUploadRequest;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -320,6 +329,112 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
       assertThatThrownBy(() -> fileService.getChunks("non-existent", false))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("File not found");
+    }
+  }
+
+  @Nested
+  @DisplayName("Batch download")
+  class BatchDownloadTests {
+
+    @Test
+    @DisplayName("should create ZIP with multiple files from MinIO")
+    void shouldCreateZipWithMultipleFiles() throws Exception {
+      // Given: 3개 파일을 MinIO에 업로드
+      var file1 = createTestFile("file1.txt", "Content of file 1", "text/plain");
+      var file2 = createTestFile("file2.txt", "Content of file 2", "text/plain");
+      var file3 = createTestFile("document.pdf", "PDF content here", "application/pdf");
+
+      List<String> uuids = List.of(file1, file2, file3);
+
+      // When: 배치 다운로드 요청
+      var streamingBody = fileService.downloadBatch(new BatchDownloadRequest(uuids));
+
+      // Then: ZIP 파일 검증
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      streamingBody.writeTo(baos);
+
+      try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+        Map<String, String> entries = new HashMap<>();
+
+        ZipEntry entry;
+        while ((entry = zis.getNextEntry()) != null) {
+          String content = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+          entries.put(entry.getName(), content);
+          zis.closeEntry();
+        }
+
+        assertThat(entries).hasSize(3);
+        assertThat(entries.get("file1.txt")).isEqualTo("Content of file 1");
+        assertThat(entries.get("file2.txt")).isEqualTo("Content of file 2");
+        assertThat(entries.get("document.pdf")).isEqualTo("PDF content here");
+      }
+
+      // Cleanup
+      uuids.forEach(uuid -> {
+        testStorageHelper.removeObject(uuid);
+        storageItemRepository.deleteByUuidIn(List.of(uuid));
+      });
+    }
+
+    @Test
+    @DisplayName("should handle duplicate file names by appending suffix")
+    void shouldHandleDuplicateFileNames() throws Exception {
+      // Given: 동일한 파일명으로 3개 파일 업로드
+      var file1 = createTestFile("report.txt", "First report", "text/plain");
+      var file2 = createTestFile("report.txt", "Second report", "text/plain");
+      var file3 = createTestFile("report.txt", "Third report", "text/plain");
+
+      List<String> uuids = List.of(file1, file2, file3);
+
+      // When
+      var streamingBody = fileService.downloadBatch(new BatchDownloadRequest(uuids));
+
+      // Then: ZIP 내 파일명 중복 해결 확인
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      streamingBody.writeTo(baos);
+
+      try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
+        List<String> entryNames = new ArrayList<>();
+
+        ZipEntry entry;
+        while ((entry = zis.getNextEntry()) != null) {
+          entryNames.add(entry.getName());
+          zis.closeEntry();
+        }
+
+        assertThat(entryNames).hasSize(3);
+        assertThat(entryNames).containsExactlyInAnyOrder("report.txt", "report (1).txt", "report (2).txt");
+      }
+
+      // Cleanup
+      uuids.forEach(uuid -> {
+        testStorageHelper.removeObject(uuid);
+        storageItemRepository.deleteByUuidIn(List.of(uuid));
+      });
+    }
+
+    @Test
+    @DisplayName("should throw when ID list is empty")
+    void shouldThrowWhenIdListIsEmpty() {
+      assertThatThrownBy(() -> fileService.downloadBatch(new BatchDownloadRequest(List.of())))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("empty");
+    }
+
+    @Test
+    @DisplayName("should throw when no files found for given UUIDs")
+    void shouldThrowWhenNoFilesFound() {
+      assertThatThrownBy(() -> fileService.downloadBatch(new BatchDownloadRequest(List.of("non-existent-uuid"))))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("No files found");
+    }
+
+    private String createTestFile(String fileName, String content, String contentType) {
+      var prepareResponse = fileService.prepareUpload();
+      String uuid = prepareResponse.id();
+      testStorageHelper.putObject(uuid, content.getBytes(StandardCharsets.UTF_8), contentType);
+      fileService.confirmUpload(new ConfirmUploadRequest(uuid, fileName));
+      return uuid;
     }
   }
 }

@@ -214,9 +214,29 @@ public class FileService {
 
   private Map<Long, String> resolveNameConflicts(List<StorageItem> items) {
     Map<Long, String> result = new HashMap<>();
-    for (int i = 0; i < items.size(); i++) {
-      StorageItem item = items.get(i);
-      result.put(item.getId(), item.getUuid());
+    Map<String, Integer> nameCount = new HashMap<>();
+
+    for (StorageItem item : items) {
+      String fileName = item.getFileName();
+      if (fileName == null || fileName.isBlank()) {
+        fileName = item.getUuid();
+      }
+
+      int count = nameCount.getOrDefault(fileName, 0);
+      nameCount.put(fileName, count + 1);
+
+      if (count == 0) {
+        result.put(item.getId(), fileName);
+      } else {
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0) {
+          String name = fileName.substring(0, dotIndex);
+          String ext = fileName.substring(dotIndex);
+          result.put(item.getId(), name + " (" + count + ")" + ext);
+        } else {
+          result.put(item.getId(), fileName + " (" + count + ")");
+        }
+      }
     }
     return result;
   }
