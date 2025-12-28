@@ -44,7 +44,6 @@ bin/
 *.md
 !README.md
 docs/
-LICENSE
 
 # ==========================================
 # Environment & Secrets

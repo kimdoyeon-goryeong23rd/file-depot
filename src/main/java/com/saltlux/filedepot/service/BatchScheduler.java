@@ -29,103 +29,82 @@ public class BatchScheduler {
   private final StorageClient storageClient;
   private final FileDepotProperties properties;
 
-  @Scheduled(cron = "${file-depot.processing.batch.extract-cron:0 */5 * * * *}")
-  public void processExtraction() {
+  /**
+   * Retry recovery job: Reprocesses files stuck in intermediate states.
+   * This handles files that failed during async processing or were interrupted.
+   */
+  @Scheduled(cron = "${file-depot.processing.batch.retry-cron:0 */5 * * * *}")
+  public void processRetry() {
     if (!isParsingEnabled()) {
-      log.debug("Parsing is disabled, skipping extraction job");
+      log.debug("Parsing is disabled, skipping retry job");
       return;
     }
 
-    log.info("Starting extraction batch job");
+    log.info("Starting retry batch job");
 
     int batchSize = properties.getProcessing().getBatch().getBatchSize();
+    int totalProcessed = 0;
+
+    totalProcessed += retryPendingFiles(batchSize);
+
+    if (isEmbeddingEnabled()) {
+      totalProcessed += retryExtractedFiles(batchSize);
+      totalProcessed += retryChunkedFiles(batchSize);
+    }
+
+    if (totalProcessed > 0) {
+      log.info("Retry batch completed: {} files processed", totalProcessed);
+    } else {
+      log.debug("No files need retry processing");
+    }
+  }
+
+  private int retryPendingFiles(int batchSize) {
     List<StorageItem> items = storageItemRepository
         .findByProcessingStepAndDeletedFalseOrderByCreatedAtAsc(ProcessingStep.PENDING, PageRequest.of(0, batchSize));
 
-    if (items.isEmpty()) {
-      log.debug("No files need extraction");
-      return;
-    }
-
-    log.info("Found {} files for extraction", items.size());
-
-    int processedCount = 0;
+    int processed = 0;
     for (StorageItem item : items) {
       try {
         processingService.extract(item.getUuid());
-        processedCount++;
+        processed++;
       } catch (Exception e) {
-        log.error("Extraction failed for file: uuid={}", item.getUuid(), e);
+        log.error("Retry extraction failed: uuid={}", item.getUuid(), e);
       }
     }
-
-    log.info("Extraction batch completed: {} files processed", processedCount);
+    return processed;
   }
 
-  @Scheduled(cron = "${file-depot.processing.batch.chunk-cron:0 */5 * * * *}")
-  public void processChunking() {
-    if (!isEmbeddingEnabled()) {
-      log.debug("Embedding is disabled, skipping chunking job");
-      return;
-    }
-
-    log.info("Starting chunking batch job");
-
-    int batchSize = properties.getProcessing().getBatch().getBatchSize();
+  private int retryExtractedFiles(int batchSize) {
     List<StorageItem> items = storageItemRepository
         .findByProcessingStepAndDeletedFalseOrderByCreatedAtAsc(ProcessingStep.EXTRACTED, PageRequest.of(0, batchSize));
 
-    if (items.isEmpty()) {
-      log.debug("No files need chunking");
-      return;
-    }
-
-    log.info("Found {} files for chunking", items.size());
-
-    int processedCount = 0;
+    int processed = 0;
     for (StorageItem item : items) {
       try {
         processingService.chunk(item.getUuid());
-        processedCount++;
+        processed++;
       } catch (Exception e) {
-        log.error("Chunking failed for file: uuid={}", item.getUuid(), e);
+        log.error("Retry chunking failed: uuid={}", item.getUuid(), e);
       }
     }
-
-    log.info("Chunking batch completed: {} files processed", processedCount);
+    return processed;
   }
 
-  @Scheduled(cron = "${file-depot.processing.batch.embed-cron:0 */5 * * * *}")
-  public void processEmbedding() {
-    if (!isEmbeddingEnabled()) {
-      log.debug("Embedding is disabled, skipping embedding job");
-      return;
-    }
-
-    log.info("Starting embedding batch job");
-
-    int batchSize = properties.getProcessing().getBatch().getBatchSize();
+  private int retryChunkedFiles(int batchSize) {
     List<StorageItem> items = storageItemRepository
         .findByProcessingStepAndDeletedFalseOrderByCreatedAtAsc(ProcessingStep.CHUNKED, PageRequest.of(0, batchSize));
 
-    if (items.isEmpty()) {
-      log.debug("No files need embedding");
-      return;
-    }
-
-    log.info("Found {} files for embedding", items.size());
-
-    int processedCount = 0;
+    int processed = 0;
     for (StorageItem item : items) {
       try {
         processingService.embed(item.getUuid());
-        processedCount++;
+        processed++;
       } catch (Exception e) {
-        log.error("Embedding failed for file: uuid={}", item.getUuid(), e);
+        log.error("Retry embedding failed: uuid={}", item.getUuid(), e);
       }
     }
-
-    log.info("Embedding batch completed: {} files processed", processedCount);
+    return processed;
   }
 
   @Scheduled(cron = "${file-depot.processing.batch.orphan-cleanup-cron:0 0 * * * *}")
