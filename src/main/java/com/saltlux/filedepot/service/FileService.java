@@ -225,7 +225,7 @@ public class FileService {
     return new ChunkDto(
         chunk.getId().toString(),
         chunk.getChunkIndex(),
-        chunk.getExtractedText(),
+        chunk.getContent(),
         withEmbedding ? toEmbeddingList(chunk.getEmbedding()) : null);
   }
 

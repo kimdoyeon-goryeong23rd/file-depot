@@ -1,20 +1,34 @@
 package com.saltlux.filedepot.integration;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.saltlux.filedepot.config.FileDepotProperties;
+import com.saltlux.filedepot.config.FileDepotProperties.EmbedKitProvider;
+import com.saltlux.filedepot.config.FileDepotProperties.ParsekitScenario;
+import com.saltlux.filedepot.entity.ProcessingStep;
+import com.saltlux.filedepot.entity.StorageItem;
+import com.saltlux.filedepot.repository.ChunkRepository;
+import com.saltlux.filedepot.repository.ExtractedContentRepository;
 import com.saltlux.filedepot.repository.StorageItemRepository;
 import com.saltlux.filedepot.service.FileService;
 import com.saltlux.filedepot.support.TestStorageHelper;
 
+import jakarta.persistence.EntityManager;
 import me.hanju.filedepot.api.dto.ConfirmUploadRequest;
+import org.springframework.transaction.support.TransactionTemplate;
 
 class FileStorageIntegrationTest extends BaseIntegrationTest {
 
@@ -26,6 +40,43 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
 
   @Autowired
   private StorageItemRepository storageItemRepository;
+
+  @Autowired
+  private ChunkRepository chunkRepository;
+
+  @Autowired
+  private ExtractedContentRepository extractedContentRepository;
+
+  @Autowired
+  private FileDepotProperties properties;
+
+  @Autowired
+  private EntityManager entityManager;
+
+  @Autowired
+  private TransactionTemplate transactionTemplate;
+
+  private static final int PROCESSING_TIMEOUT_MINUTES = 1;
+  private static final int POLL_INTERVAL_SECONDS = 5;
+
+  private void cleanupTestData(String uuid) {
+    testStorageHelper.removeObject(uuid);
+    transactionTemplate.executeWithoutResult(status -> {
+      chunkRepository.deleteByUuid(uuid);
+      extractedContentRepository.deleteByStorageItemUuid(uuid);
+      storageItemRepository.deleteByUuidIn(List.of(uuid));
+    });
+  }
+
+  private boolean isParsingEnabled() {
+    ParsekitScenario scenario = properties.getParsekit().getScenario();
+    return scenario == ParsekitScenario.SCENARIO1 || scenario == ParsekitScenario.SCENARIO2;
+  }
+
+  private boolean isEmbeddingEnabled() {
+    EmbedKitProvider provider = properties.getEmbedkit().getProvider();
+    return provider != EmbedKitProvider.NONE;
+  }
 
   @Nested
   @DisplayName("Presigned upload flow")
@@ -152,6 +203,123 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
     @DisplayName("should handle empty list gracefully")
     void shouldHandleEmptyList() {
       fileService.deleteFiles(List.of());
+    }
+  }
+
+  @Nested
+  @DisplayName("File content retrieval")
+  class FileContentRetrievalTests {
+
+    @BeforeEach
+    void checkAvailability() {
+      assumeTrue(isParsingEnabled(),
+          "Skipping content retrieval tests: parsing is not enabled");
+    }
+
+    @Test
+    @DisplayName("should get file metadata with extracted content when withContent=true")
+    void shouldGetFileMetadataWithContent() {
+      var prepareResponse = fileService.prepareUpload();
+      String uuid = prepareResponse.id();
+      testStorageHelper.putObject(uuid, "This is test content for extraction".getBytes(), "text/plain");
+      fileService.confirmUpload(new ConfirmUploadRequest(uuid, "content-test.txt"));
+
+      ProcessingStep expectedFinalStep = isEmbeddingEnabled()
+          ? ProcessingStep.EMBEDDED
+          : ProcessingStep.EXTRACTED;
+
+      await().atMost(PROCESSING_TIMEOUT_MINUTES, MINUTES)
+          .pollInterval(POLL_INTERVAL_SECONDS, SECONDS)
+          .until(() -> {
+            entityManager.clear();
+            StorageItem item = storageItemRepository.findByUuid(uuid).orElseThrow();
+            return item.getProcessingStep() == expectedFinalStep
+                || item.getProcessingStep() == ProcessingStep.FAILED;
+          });
+
+      var metadataWithContent = fileService.getFileMetadata(uuid, true);
+      var metadataWithoutContent = fileService.getFileMetadata(uuid, false);
+
+      assertThat(metadataWithContent.id()).isEqualTo(uuid);
+      assertThat(metadataWithContent.content()).isNotNull();
+      assertThat(metadataWithContent.content()).isNotBlank();
+
+      assertThat(metadataWithoutContent.id()).isEqualTo(uuid);
+      assertThat(metadataWithoutContent.content()).isNull();
+
+      cleanupTestData(uuid);
+    }
+  }
+
+  @Nested
+  @DisplayName("Chunks retrieval")
+  class ChunksRetrievalTests {
+
+    @BeforeEach
+    void checkAvailability() {
+      assumeTrue(isParsingEnabled() && isEmbeddingEnabled(),
+          "Skipping chunks retrieval tests: parsing or embedding is not enabled");
+    }
+
+    @Test
+    @DisplayName("should get chunks without embedding when withEmbedding=false")
+    void shouldGetChunksWithoutEmbedding() {
+      var prepareResponse = fileService.prepareUpload();
+      String uuid = prepareResponse.id();
+      testStorageHelper.putObject(uuid, "Test content for chunking without embedding".getBytes(), "text/plain");
+      fileService.confirmUpload(new ConfirmUploadRequest(uuid, "chunks-test.txt"));
+
+      await().atMost(PROCESSING_TIMEOUT_MINUTES, MINUTES)
+          .pollInterval(POLL_INTERVAL_SECONDS, SECONDS)
+          .until(() -> {
+            entityManager.clear();
+            StorageItem item = storageItemRepository.findByUuid(uuid).orElseThrow();
+            return item.getProcessingStep() == ProcessingStep.EMBEDDED
+                || item.getProcessingStep() == ProcessingStep.FAILED;
+          });
+
+      var chunks = fileService.getChunks(uuid, false);
+
+      assertThat(chunks).isNotEmpty();
+      assertThat(chunks.get(0).content()).isNotNull();
+      assertThat(chunks.get(0).embedding()).isNull();
+
+      cleanupTestData(uuid);
+    }
+
+    @Test
+    @DisplayName("should get chunks with embedding when withEmbedding=true")
+    void shouldGetChunksWithEmbedding() {
+      var prepareResponse = fileService.prepareUpload();
+      String uuid = prepareResponse.id();
+      testStorageHelper.putObject(uuid, "Test content for chunking with embedding".getBytes(), "text/plain");
+      fileService.confirmUpload(new ConfirmUploadRequest(uuid, "chunks-embed-test.txt"));
+
+      await().atMost(PROCESSING_TIMEOUT_MINUTES, MINUTES)
+          .pollInterval(POLL_INTERVAL_SECONDS, SECONDS)
+          .until(() -> {
+            entityManager.clear();
+            StorageItem item = storageItemRepository.findByUuid(uuid).orElseThrow();
+            return item.getProcessingStep() == ProcessingStep.EMBEDDED
+                || item.getProcessingStep() == ProcessingStep.FAILED;
+          });
+
+      var chunks = fileService.getChunks(uuid, true);
+
+      assertThat(chunks).isNotEmpty();
+      assertThat(chunks.get(0).content()).isNotNull();
+      assertThat(chunks.get(0).embedding()).isNotNull();
+      assertThat(chunks.get(0).embedding()).isNotEmpty();
+
+      cleanupTestData(uuid);
+    }
+
+    @Test
+    @DisplayName("should throw when getting chunks for non-existent file")
+    void shouldThrowForNonExistentFileChunks() {
+      assertThatThrownBy(() -> fileService.getChunks("non-existent", false))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("File not found");
     }
   }
 }

@@ -116,7 +116,7 @@ public class ProcessingService {
           Chunk chunk = Chunk.builder()
               .uuid(uuid)
               .chunkIndex(i)
-              .extractedText(chunks.get(i))
+              .content(chunks.get(i))
               .build();
           chunkRepository.save(chunk);
         }
@@ -164,7 +164,7 @@ public class ProcessingService {
       }
 
       List<String> texts = contents.stream()
-          .map(Chunk::getExtractedText)
+          .map(Chunk::getContent)
           .toList();
 
       List<EmbeddingResult> results = textEmbeddingClient.embed(texts);

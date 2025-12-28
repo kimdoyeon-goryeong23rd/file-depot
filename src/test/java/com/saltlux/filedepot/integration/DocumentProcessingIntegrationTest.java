@@ -177,7 +177,7 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
         chunksContent.append("=== Total Chunks: ").append(chunks.size()).append(" ===\n\n");
         for (Chunk chunk : chunks) {
           chunksContent.append("--- Chunk #").append(chunk.getChunkIndex()).append(" ---\n");
-          chunksContent.append(chunk.getExtractedText()).append("\n\n");
+          chunksContent.append(chunk.getContent()).append("\n\n");
         }
         Path chunksPath = OUTPUT_DIR.resolve(baseName + "_chunks.txt");
         Files.writeString(chunksPath, chunksContent.toString(), StandardCharsets.UTF_8);
@@ -286,7 +286,7 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
         chunksContent.append("=== Total Chunks: ").append(chunks.size()).append(" ===\n\n");
         for (Chunk chunk : chunks) {
           chunksContent.append("--- Chunk #").append(chunk.getChunkIndex()).append(" ---\n");
-          chunksContent.append(chunk.getExtractedText()).append("\n\n");
+          chunksContent.append(chunk.getContent()).append("\n\n");
         }
         Path chunksPath = OUTPUT_DIR.resolve(baseName + "_chunks.txt");
         Files.writeString(chunksPath, chunksContent.toString(), StandardCharsets.UTF_8);

@@ -44,12 +44,12 @@ public class TestContainersConfig {
 
   @Bean
   @Primary
-  public FileDepotProperties testFileDepotProperties(MinIOContainer minioContainer) {
-    FileDepotProperties props = new FileDepotProperties();
-    props.getMinio().setUrl(minioContainer.getS3URL());
-    props.getMinio().setAccessKey(MINIO_USER);
-    props.getMinio().setSecretKey(MINIO_PASSWORD);
-    props.getMinio().setBucket(MINIO_BUCKET);
-    return props;
+  public FileDepotProperties testFileDepotProperties(MinIOContainer minioContainer, FileDepotProperties existingProps) {
+    // application.yml에서 읽은 설정을 유지하고, MinIO만 테스트 컨테이너로 덮어씀
+    existingProps.getMinio().setUrl(minioContainer.getS3URL());
+    existingProps.getMinio().setAccessKey(MINIO_USER);
+    existingProps.getMinio().setSecretKey(MINIO_PASSWORD);
+    existingProps.getMinio().setBucket(MINIO_BUCKET);
+    return existingProps;
   }
 }

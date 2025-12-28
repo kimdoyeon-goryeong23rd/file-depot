@@ -41,8 +41,8 @@ public class Chunk {
   private Integer chunkIndex;
 
   @Lob
-  @Column(name = "extracted_text", columnDefinition = "TEXT")
-  private String extractedText;
+  @Column(name = "content", columnDefinition = "TEXT")
+  private String content;
 
   @Lob
   @Column(name = "embedding", columnDefinition = "LONGBLOB")
@@ -57,10 +57,10 @@ public class Chunk {
   private Instant updatedAt;
 
   @Builder
-  public Chunk(String uuid, Integer chunkIndex, String extractedText, byte[] embedding) {
+  public Chunk(String uuid, Integer chunkIndex, String content, byte[] embedding) {
     this.uuid = uuid;
     this.chunkIndex = chunkIndex != null ? chunkIndex : 0;
-    this.extractedText = extractedText;
+    this.content = content;
     this.embedding = embedding;
   }
 

@@ -135,7 +135,7 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
       for (int i = 0; i < chunks.size(); i++) {
         Chunk chunk = chunks.get(i);
         assertThat(chunk.getChunkIndex()).isEqualTo(i);
-        assertThat(chunk.getExtractedText()).isNotBlank();
+        assertThat(chunk.getContent()).isNotBlank();
         assertThat(chunk.getEmbedding()).isNotNull();
       }
 
@@ -200,7 +200,7 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
 
       List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
       assertThat(chunks).isNotEmpty();
-      assertThat(chunks.get(0).getExtractedText()).isNotBlank();
+      assertThat(chunks.get(0).getContent()).isNotBlank();
       assertThat(chunks.get(0).getEmbedding()).isNull();
 
       StorageItem updatedItem = storageItemRepository.findByUuid(uuid).orElseThrow();
