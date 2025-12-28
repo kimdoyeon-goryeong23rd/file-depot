@@ -49,9 +49,10 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
 
       testStorageHelper.putObject(uuid, "test content".getBytes(), "text/plain");
 
-      var confirmResponse = fileService.confirmUpload(new ConfirmUploadRequest(uuid));
+      var confirmResponse = fileService.confirmUpload(new ConfirmUploadRequest(uuid, "test.txt"));
 
       assertThat(confirmResponse.id()).isEqualTo(uuid);
+      assertThat(confirmResponse.fileName()).isEqualTo("test.txt");
       assertThat(confirmResponse.contentType()).isEqualTo("text/plain");
       assertThat(confirmResponse.size()).isEqualTo(12L);
 
@@ -62,7 +63,7 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("should throw exception when confirming non-uploaded file")
     void shouldThrowWhenConfirmingNonUploadedFile() {
-      assertThatThrownBy(() -> fileService.confirmUpload(new ConfirmUploadRequest("non-existent-uuid")))
+      assertThatThrownBy(() -> fileService.confirmUpload(new ConfirmUploadRequest("non-existent-uuid", "test.txt")))
           .isInstanceOf(RuntimeException.class);
     }
   }
@@ -77,12 +78,14 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
       var prepareResponse = fileService.prepareUpload();
       String uuid = prepareResponse.id();
       testStorageHelper.putObject(uuid, "metadata test".getBytes(), "application/json");
-      fileService.confirmUpload(new ConfirmUploadRequest(uuid));
+      fileService.confirmUpload(new ConfirmUploadRequest(uuid, "test.json"));
 
-      var metadata = fileService.getFileMetadata(uuid);
+      var metadata = fileService.getFileMetadata(uuid, false);
 
       assertThat(metadata.id()).isEqualTo(uuid);
+      assertThat(metadata.fileName()).isEqualTo("test.json");
       assertThat(metadata.contentType()).isEqualTo("application/json");
+      assertThat(metadata.content()).isNull();
 
       testStorageHelper.removeObject(uuid);
       storageItemRepository.deleteByUuidIn(List.of(uuid));
@@ -91,7 +94,7 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("should throw when getting metadata for non-existent file")
     void shouldThrowForNonExistentFile() {
-      assertThatThrownBy(() -> fileService.getFileMetadata("non-existent"))
+      assertThatThrownBy(() -> fileService.getFileMetadata("non-existent", false))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("File not found");
     }
@@ -102,7 +105,7 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
       var prepareResponse = fileService.prepareUpload();
       String uuid = prepareResponse.id();
       testStorageHelper.putObject(uuid, "download test".getBytes(), "text/plain");
-      fileService.confirmUpload(new ConfirmUploadRequest(uuid));
+      fileService.confirmUpload(new ConfirmUploadRequest(uuid, "download.txt"));
 
       var downloadResponse = fileService.getDownloadUrl(uuid);
 
@@ -126,8 +129,8 @@ class FileStorageIntegrationTest extends BaseIntegrationTest {
       var response2 = fileService.prepareUpload();
       testStorageHelper.putObject(response1.id(), "file1".getBytes(), "text/plain");
       testStorageHelper.putObject(response2.id(), "file2".getBytes(), "text/plain");
-      fileService.confirmUpload(new ConfirmUploadRequest(response1.id()));
-      fileService.confirmUpload(new ConfirmUploadRequest(response2.id()));
+      fileService.confirmUpload(new ConfirmUploadRequest(response1.id(), "file1.txt"));
+      fileService.confirmUpload(new ConfirmUploadRequest(response2.id(), "file2.txt"));
 
       List<String> uuids = List.of(response1.id(), response2.id());
 

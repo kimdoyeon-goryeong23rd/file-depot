@@ -22,13 +22,13 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @EntityListeners(AuditingEntityListener.class)
-@Table(name = "file_content", indexes = {
-    @Index(name = "idx_file_content_uuid", columnList = "uuid"),
-    @Index(name = "idx_file_content_uuid_chunk", columnList = "uuid, chunk_index")
+@Table(name = "chunk", indexes = {
+    @Index(name = "idx_chunk_uuid", columnList = "uuid"),
+    @Index(name = "idx_chunk_uuid_index", columnList = "uuid, chunk_index")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class FileContent {
+public class Chunk {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -57,7 +57,7 @@ public class FileContent {
   private Instant updatedAt;
 
   @Builder
-  public FileContent(String uuid, Integer chunkIndex, String extractedText, byte[] embedding) {
+  public Chunk(String uuid, Integer chunkIndex, String extractedText, byte[] embedding) {
     this.uuid = uuid;
     this.chunkIndex = chunkIndex != null ? chunkIndex : 0;
     this.extractedText = extractedText;

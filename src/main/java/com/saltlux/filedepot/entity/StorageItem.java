@@ -84,6 +84,9 @@ public class StorageItem {
   @Column(name = "retry_count", nullable = false)
   private int retryCount = 0;
 
+  @Column(name = "file_name", length = 255)
+  private String fileName;
+
   public void markAsDeleted() {
     this.deleted = true;
   }

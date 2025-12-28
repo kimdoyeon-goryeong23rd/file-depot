@@ -14,12 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.saltlux.filedepot.config.FileDepotProperties;
 import com.saltlux.filedepot.config.FileDepotProperties.EmbedKitProvider;
+import com.saltlux.filedepot.entity.Chunk;
 import com.saltlux.filedepot.entity.ExtractedContent;
-import com.saltlux.filedepot.entity.FileContent;
 import com.saltlux.filedepot.entity.ProcessingStep;
 import com.saltlux.filedepot.entity.StorageItem;
+import com.saltlux.filedepot.repository.ChunkRepository;
 import com.saltlux.filedepot.repository.ExtractedContentRepository;
-import com.saltlux.filedepot.repository.FileContentRepository;
 import com.saltlux.filedepot.repository.StorageItemRepository;
 import com.saltlux.filedepot.service.ProcessingService;
 
@@ -30,7 +30,7 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
   private ProcessingService processingService;
 
   @Autowired
-  private FileContentRepository fileContentRepository;
+  private ChunkRepository chunkRepository;
 
   @Autowired
   private ExtractedContentRepository extractedContentRepository;
@@ -70,7 +70,7 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
   }
 
   private void cleanup(String uuid) {
-    fileContentRepository.deleteByUuid(uuid);
+    chunkRepository.deleteByUuid(uuid);
     extractedContentRepository.deleteByStorageItemUuid(uuid);
     storageItemRepository.findByUuid(uuid).ifPresent(storageItemRepository::delete);
   }
@@ -100,10 +100,10 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
       processingService.chunk(uuid);
       processingService.embed(uuid);
 
-      List<FileContent> contents = fileContentRepository.findByUuidOrderByChunkIndexAsc(uuid);
-      assertThat(contents).isNotEmpty();
-      assertThat(contents.get(0).getEmbedding()).isNotNull();
-      assertThat(contents.get(0).getEmbedding().length).isGreaterThan(0);
+      List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
+      assertThat(chunks).isNotEmpty();
+      assertThat(chunks.get(0).getEmbedding()).isNotNull();
+      assertThat(chunks.get(0).getEmbedding().length).isGreaterThan(0);
 
       StorageItem updatedItem = storageItemRepository.findByUuid(uuid).orElseThrow();
       assertThat(updatedItem.getProcessingStep()).isEqualTo(ProcessingStep.EMBEDDED);
@@ -129,14 +129,14 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
       processingService.chunk(uuid);
       processingService.embed(uuid);
 
-      List<FileContent> contents = fileContentRepository.findByUuidOrderByChunkIndexAsc(uuid);
-      assertThat(contents).hasSizeGreaterThan(1);
+      List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
+      assertThat(chunks).hasSizeGreaterThan(1);
 
-      for (int i = 0; i < contents.size(); i++) {
-        FileContent content = contents.get(i);
-        assertThat(content.getChunkIndex()).isEqualTo(i);
-        assertThat(content.getExtractedText()).isNotBlank();
-        assertThat(content.getEmbedding()).isNotNull();
+      for (int i = 0; i < chunks.size(); i++) {
+        Chunk chunk = chunks.get(i);
+        assertThat(chunk.getChunkIndex()).isEqualTo(i);
+        assertThat(chunk.getExtractedText()).isNotBlank();
+        assertThat(chunk.getEmbedding()).isNotNull();
       }
 
       cleanup(uuid);
@@ -167,10 +167,10 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
       processingService.chunk(uuid);
       processingService.embed(uuid);
 
-      List<FileContent> contents = fileContentRepository.findByUuidOrderByChunkIndexAsc(uuid);
-      assertThat(contents).isNotEmpty();
-      assertThat(contents.get(0).getEmbedding()).isNotNull();
-      assertThat(contents.get(0).getEmbedding().length).isGreaterThan(0);
+      List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
+      assertThat(chunks).isNotEmpty();
+      assertThat(chunks.get(0).getEmbedding()).isNotNull();
+      assertThat(chunks.get(0).getEmbedding().length).isGreaterThan(0);
 
       cleanup(uuid);
     }
@@ -198,10 +198,10 @@ class EmbeddingIntegrationTest extends BaseIntegrationTest {
 
       processingService.chunk(uuid);
 
-      List<FileContent> contents = fileContentRepository.findByUuidOrderByChunkIndexAsc(uuid);
-      assertThat(contents).isNotEmpty();
-      assertThat(contents.get(0).getExtractedText()).isNotBlank();
-      assertThat(contents.get(0).getEmbedding()).isNull();
+      List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
+      assertThat(chunks).isNotEmpty();
+      assertThat(chunks.get(0).getExtractedText()).isNotBlank();
+      assertThat(chunks.get(0).getEmbedding()).isNull();
 
       StorageItem updatedItem = storageItemRepository.findByUuid(uuid).orElseThrow();
       assertThat(updatedItem.getProcessingStep()).isEqualTo(ProcessingStep.CHUNKED);

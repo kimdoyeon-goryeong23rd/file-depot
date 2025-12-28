@@ -14,12 +14,12 @@ import com.saltlux.embedkit.payload.EmbeddingResult;
 import com.saltlux.filedepot.config.FileDepotProperties;
 import com.saltlux.filedepot.config.FileDepotProperties.EmbedKitProvider;
 import com.saltlux.filedepot.config.FileDepotProperties.ParsekitScenario;
+import com.saltlux.filedepot.entity.Chunk;
 import com.saltlux.filedepot.entity.ExtractedContent;
-import com.saltlux.filedepot.entity.FileContent;
 import com.saltlux.filedepot.entity.ProcessingStep;
 import com.saltlux.filedepot.entity.StorageItem;
+import com.saltlux.filedepot.repository.ChunkRepository;
 import com.saltlux.filedepot.repository.ExtractedContentRepository;
-import com.saltlux.filedepot.repository.FileContentRepository;
 import com.saltlux.filedepot.repository.StorageItemRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class ProcessingService {
 
   private final StorageItemRepository storageItemRepository;
   private final ExtractedContentRepository extractedContentRepository;
-  private final FileContentRepository fileContentRepository;
+  private final ChunkRepository chunkRepository;
   private final TextExtractor textExtractor;
   private final FileDepotProperties properties;
   private final TransactionTemplate transactionTemplate;
@@ -110,15 +110,15 @@ public class ProcessingService {
       List<String> chunks = chunkText(content);
 
       transactionTemplate.executeWithoutResult(status -> {
-        fileContentRepository.deleteByUuid(uuid);
+        chunkRepository.deleteByUuid(uuid);
 
         for (int i = 0; i < chunks.size(); i++) {
-          FileContent fileContent = FileContent.builder()
+          Chunk chunk = Chunk.builder()
               .uuid(uuid)
               .chunkIndex(i)
               .extractedText(chunks.get(i))
               .build();
-          fileContentRepository.save(fileContent);
+          chunkRepository.save(chunk);
         }
 
         item.updateStep(ProcessingStep.CHUNKED);
@@ -151,8 +151,8 @@ public class ProcessingService {
     ProcessingStep previousStep = ProcessingStep.CHUNKED;
 
     try {
-      List<FileContent> contents = transactionTemplate.execute(status ->
-          fileContentRepository.findByUuidOrderByChunkIndexAsc(uuid));
+      List<Chunk> contents = transactionTemplate.execute(status ->
+          chunkRepository.findByUuidOrderByChunkIndexAsc(uuid));
 
       if (contents.isEmpty()) {
         log.warn("No content found for embedding generation: {}", uuid);
@@ -164,16 +164,16 @@ public class ProcessingService {
       }
 
       List<String> texts = contents.stream()
-          .map(FileContent::getExtractedText)
+          .map(Chunk::getExtractedText)
           .toList();
 
       List<EmbeddingResult> results = textEmbeddingClient.embed(texts);
 
       transactionTemplate.executeWithoutResult(status -> {
         for (EmbeddingResult result : results) {
-          FileContent content = contents.get(result.index());
+          Chunk content = contents.get(result.index());
           content.updateEmbedding(toBytes(result.embedding()));
-          fileContentRepository.save(content);
+          chunkRepository.save(content);
         }
 
         item.updateStep(ProcessingStep.EMBEDDED);

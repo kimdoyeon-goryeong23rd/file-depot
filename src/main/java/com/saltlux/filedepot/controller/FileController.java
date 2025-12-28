@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
@@ -17,6 +18,7 @@ import com.saltlux.filedepot.service.FileService;
 
 import lombok.RequiredArgsConstructor;
 import me.hanju.filedepot.api.dto.BatchDownloadRequest;
+import me.hanju.filedepot.api.dto.ChunkDto;
 import me.hanju.filedepot.api.dto.CommonResponseDto;
 import me.hanju.filedepot.api.dto.ConfirmUploadRequest;
 import me.hanju.filedepot.api.dto.DownloadUrlResponse;
@@ -43,8 +45,10 @@ public class FileController {
   }
 
   @GetMapping("/{id}")
-  public CommonResponseDto<StorageItemDto> getFileMetadata(@PathVariable String id) {
-    StorageItemDto item = fileService.getFileMetadata(id);
+  public CommonResponseDto<StorageItemDto> getFileMetadata(
+      @PathVariable String id,
+      @RequestParam(defaultValue = "false") boolean withContent) {
+    StorageItemDto item = fileService.getFileMetadata(id, withContent);
     return CommonResponseDto.success(item);
   }
 
@@ -52,6 +56,14 @@ public class FileController {
   public CommonResponseDto<DownloadUrlResponse> getDownloadUrl(@PathVariable String uuid) {
     DownloadUrlResponse response = fileService.getDownloadUrl(uuid);
     return CommonResponseDto.success(response);
+  }
+
+  @GetMapping("/{id}/chunks")
+  public CommonResponseDto<List<ChunkDto>> getChunks(
+      @PathVariable String id,
+      @RequestParam(defaultValue = "false") boolean withEmbedding) {
+    List<ChunkDto> chunks = fileService.getChunks(id, withEmbedding);
+    return CommonResponseDto.success(chunks);
   }
 
   @PostMapping("/download/batch")

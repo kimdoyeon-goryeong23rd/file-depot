@@ -2,6 +2,7 @@ package com.saltlux.filedepot.service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,14 +15,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import com.saltlux.filedepot.entity.Chunk;
+import com.saltlux.filedepot.entity.ExtractedContent;
 import com.saltlux.filedepot.entity.ProcessingStep;
 import com.saltlux.filedepot.entity.StorageItem;
+import com.saltlux.filedepot.repository.ChunkRepository;
+import com.saltlux.filedepot.repository.ExtractedContentRepository;
 import com.saltlux.filedepot.repository.StorageItemRepository;
 
 import io.minio.StatObjectResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.hanju.filedepot.api.dto.BatchDownloadRequest;
+import me.hanju.filedepot.api.dto.ChunkDto;
 import me.hanju.filedepot.api.dto.ConfirmUploadRequest;
 import me.hanju.filedepot.api.dto.DownloadUrlResponse;
 import me.hanju.filedepot.api.dto.StorageItemDto;
@@ -35,6 +41,8 @@ import me.hanju.filedepot.api.enums.ProcessingStatus;
 public class FileService {
 
     private final StorageItemRepository storageItemRepository;
+    private final ExtractedContentRepository extractedContentRepository;
+    private final ChunkRepository chunkRepository;
     private final StorageClient storageClient;
 
     private static final int PRESIGNED_URL_EXPIRY_SECONDS = 3600;
@@ -51,25 +59,31 @@ public class FileService {
     public StorageItemDto confirmUpload(ConfirmUploadRequest request) {
         StatObjectResponse stat = storageClient.statObject(request.id());
 
+        String fileName = request.fileName();
+        if (fileName == null || fileName.isBlank()) {
+            fileName = request.id();
+        }
+
         StorageItem item = StorageItem.builder()
                 .uuid(request.id())
                 .contentType(stat.contentType())
                 .size(stat.size())
+                .fileName(fileName)
                 .build();
 
         storageItemRepository.save(item);
 
-        log.info("Confirmed upload: id={}", request.id());
+        log.info("Confirmed upload: id={}, fileName={}", request.id(), fileName);
 
         return toDto(item);
     }
 
     @Transactional(readOnly = true)
-    public StorageItemDto getFileMetadata(String id) {
+    public StorageItemDto getFileMetadata(String id, boolean withContent) {
         StorageItem item = storageItemRepository.findByUuidAndDeletedFalse(id)
                 .orElseThrow(() -> new IllegalArgumentException("File not found: " + id));
 
-        return toDto(item);
+        return toDto(item, withContent);
     }
 
     @Transactional(readOnly = true)
@@ -80,6 +94,18 @@ public class FileService {
         String downloadUrl = storageClient.getPresignedDownloadUrl(item.getUuid(), PRESIGNED_URL_EXPIRY_SECONDS);
 
         return new DownloadUrlResponse(downloadUrl, PRESIGNED_URL_EXPIRY_SECONDS);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChunkDto> getChunks(String id, boolean withEmbedding) {
+        storageItemRepository.findByUuidAndDeletedFalse(id)
+                .orElseThrow(() -> new IllegalArgumentException("File not found: " + id));
+
+        List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(id);
+
+        return chunks.stream()
+                .map(chunk -> toChunkDto(chunk, withEmbedding))
+                .toList();
     }
 
     public void deleteFiles(List<String> uuids) {
@@ -152,12 +178,25 @@ public class FileService {
     }
 
     private StorageItemDto toDto(StorageItem item) {
+        return toDto(item, false);
+    }
+
+    private StorageItemDto toDto(StorageItem item, boolean withContent) {
+        String content = null;
+        if (withContent) {
+            content = extractedContentRepository.findByStorageItemUuid(item.getUuid())
+                    .map(ExtractedContent::getContent)
+                    .orElse(null);
+        }
+
         return new StorageItemDto(
                 item.getUuid(),
+                item.getFileName(),
                 item.getSize(),
                 item.getContentType(),
                 toStatus(item.getProcessingStep()),
-                item.getCreatedAt()
+                item.getCreatedAt(),
+                content
         );
     }
 
@@ -176,6 +215,27 @@ public class FileService {
         for (int i = 0; i < items.size(); i++) {
             StorageItem item = items.get(i);
             result.put(item.getId(), item.getUuid());
+        }
+        return result;
+    }
+
+    private ChunkDto toChunkDto(Chunk chunk, boolean withEmbedding) {
+        return new ChunkDto(
+                chunk.getId().toString(),
+                chunk.getChunkIndex(),
+                chunk.getExtractedText(),
+                withEmbedding ? toEmbeddingList(chunk.getEmbedding()) : null
+        );
+    }
+
+    private List<Float> toEmbeddingList(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        List<Float> result = new ArrayList<>();
+        while (buffer.hasRemaining()) {
+            result.add(buffer.getFloat());
         }
         return result;
     }

@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -19,8 +21,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.saltlux.filedepot.config.FileDepotProperties;
 import com.saltlux.filedepot.config.FileDepotProperties.ParsekitScenario;
+import com.saltlux.filedepot.entity.Chunk;
 import com.saltlux.filedepot.entity.ProcessingStep;
 import com.saltlux.filedepot.entity.StorageItem;
+import com.saltlux.filedepot.repository.ChunkRepository;
+import com.saltlux.filedepot.repository.ExtractedContentRepository;
 import com.saltlux.filedepot.repository.StorageItemRepository;
 import com.saltlux.filedepot.service.ProcessingService;
 import com.saltlux.filedepot.support.TestStorageHelper;
@@ -38,6 +43,19 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
 
   @Autowired
   private FileDepotProperties properties;
+
+  @Autowired
+  private ExtractedContentRepository extractedContentRepository;
+
+  @Autowired
+  private ChunkRepository chunkRepository;
+
+  private static final Path OUTPUT_DIR = Path.of("data/outputs");
+
+  @BeforeAll
+  static void setupOutputDirectory() throws IOException {
+    Files.createDirectories(OUTPUT_DIR);
+  }
 
   private boolean isScenario1Configured() {
     return properties.getParsekit().getScenario() == ParsekitScenario.SCENARIO1;
@@ -73,7 +91,7 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
     private boolean isDocumentFile(String filename) {
       String lower = filename.toLowerCase();
       return lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".hwp")
-          || lower.endsWith(".doc") || lower.endsWith(".pptx") || lower.endsWith(".xlsx");
+          || lower.endsWith(".hwpx") || lower.endsWith(".doc") || lower.endsWith(".pptx") || lower.endsWith(".xlsx");
     }
 
     private void processFile(Path file) throws IOException {
@@ -83,13 +101,58 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
 
       String uuid = createTestFile(filename, content, contentType);
 
+      // Step 1: Extract
       processingService.extract(uuid);
 
       StorageItem item = storageItemRepository.findByUuid(uuid).orElseThrow();
+      if (item.getProcessingStep() == ProcessingStep.FAILED) {
+        System.out.println(">>> [" + filename + "] Extraction FAILED");
+        cleanup(uuid);
+        return;
+      }
+
+      // Step 2: Chunk
+      processingService.chunk(uuid);
+
+      item = storageItemRepository.findByUuid(uuid).orElseThrow();
       assertThat(item.getProcessingStep())
-          .isIn(ProcessingStep.EXTRACTED, ProcessingStep.FAILED);
+          .isIn(ProcessingStep.CHUNKED, ProcessingStep.FAILED);
+
+      // Save extracted content and chunks to output file
+      saveExtractedContent(filename, uuid);
 
       cleanup(uuid);
+    }
+
+    private void saveExtractedContent(String filename, String uuid) throws IOException {
+      String baseName = filename.substring(0, filename.lastIndexOf('.'));
+
+      // Save extracted text
+      extractedContentRepository.findByStorageItemUuid(uuid).ifPresent(extracted -> {
+        try {
+          Path extractedPath = OUTPUT_DIR.resolve(baseName + "_extracted.txt");
+          Files.writeString(extractedPath, extracted.getContent(), StandardCharsets.UTF_8);
+          System.out.println("\n>>> [" + filename + "] Saved extracted content to: " + extractedPath);
+          System.out.println(">>> Content length: " + extracted.getContent().length() + " chars");
+          System.out.println(">>> Preview:\n" + extracted.getContent().substring(0, Math.min(500, extracted.getContent().length())) + "...\n");
+        } catch (IOException e) {
+          throw new RuntimeException("Failed to save extracted content", e);
+        }
+      });
+
+      // Save chunks
+      java.util.List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
+      if (!chunks.isEmpty()) {
+        StringBuilder chunksContent = new StringBuilder();
+        chunksContent.append("=== Total Chunks: ").append(chunks.size()).append(" ===\n\n");
+        for (Chunk chunk : chunks) {
+          chunksContent.append("--- Chunk #").append(chunk.getChunkIndex()).append(" ---\n");
+          chunksContent.append(chunk.getExtractedText()).append("\n\n");
+        }
+        Path chunksPath = OUTPUT_DIR.resolve(baseName + "_chunks.txt");
+        Files.writeString(chunksPath, chunksContent.toString(), StandardCharsets.UTF_8);
+        System.out.println(">>> [" + filename + "] Saved " + chunks.size() + " chunks to: " + chunksPath);
+      }
     }
 
     private String getContentType(String filename) {
@@ -97,6 +160,7 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
       if (lower.endsWith(".pdf")) return "application/pdf";
       if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       if (lower.endsWith(".hwp")) return "application/x-hwp";
+      if (lower.endsWith(".hwpx")) return "application/x-hwpx";
       if (lower.endsWith(".png")) return "image/png";
       if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
       return "application/octet-stream";
@@ -145,7 +209,39 @@ class DocumentProcessingIntegrationTest extends BaseIntegrationTest {
       assertThat(item.getProcessingStep())
           .isIn(ProcessingStep.EXTRACTED, ProcessingStep.FAILED);
 
+      // Save extracted content to output file
+      saveImageExtractedContent(filename, uuid);
+
       cleanup(uuid);
+    }
+
+    private void saveImageExtractedContent(String filename, String uuid) throws IOException {
+      String baseName = filename.substring(0, filename.lastIndexOf('.'));
+
+      extractedContentRepository.findByStorageItemUuid(uuid).ifPresent(extracted -> {
+        try {
+          Path extractedPath = OUTPUT_DIR.resolve(baseName + "_ocr.txt");
+          Files.writeString(extractedPath, extracted.getContent(), StandardCharsets.UTF_8);
+          System.out.println("\n>>> [" + filename + "] Saved OCR result to: " + extractedPath);
+          System.out.println(">>> Content length: " + extracted.getContent().length() + " chars");
+          System.out.println(">>> Preview:\n" + extracted.getContent().substring(0, Math.min(500, extracted.getContent().length())) + "...\n");
+        } catch (IOException e) {
+          throw new RuntimeException("Failed to save OCR content", e);
+        }
+      });
+
+      java.util.List<Chunk> chunks = chunkRepository.findByUuidOrderByChunkIndexAsc(uuid);
+      if (!chunks.isEmpty()) {
+        StringBuilder chunksContent = new StringBuilder();
+        chunksContent.append("=== Total Chunks: ").append(chunks.size()).append(" ===\n\n");
+        for (Chunk chunk : chunks) {
+          chunksContent.append("--- Chunk #").append(chunk.getChunkIndex()).append(" ---\n");
+          chunksContent.append(chunk.getExtractedText()).append("\n\n");
+        }
+        Path chunksPath = OUTPUT_DIR.resolve(baseName + "_chunks.txt");
+        Files.writeString(chunksPath, chunksContent.toString(), StandardCharsets.UTF_8);
+        System.out.println(">>> [" + filename + "] Saved " + chunks.size() + " chunks to: " + chunksPath);
+      }
     }
 
     private String getContentType(String filename) {

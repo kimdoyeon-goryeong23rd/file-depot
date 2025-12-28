@@ -6,11 +6,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.saltlux.filedepot.entity.FileContent;
+import com.saltlux.filedepot.entity.Chunk;
 
-public interface FileContentRepository extends JpaRepository<FileContent, Long> {
+public interface ChunkRepository extends JpaRepository<Chunk, Long> {
 
-  List<FileContent> findByUuidOrderByChunkIndexAsc(String uuid);
+  List<Chunk> findByUuidOrderByChunkIndexAsc(String uuid);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Transactional
